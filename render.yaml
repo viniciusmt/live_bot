@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: live-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: TWITCH_CANAL
+        sync: false
+      - key: TWITCH_CLIENT_ID
+        sync: false
+      - key: TWITCH_REFRESH_TOKEN
+        sync: false
+      - key: BLIZZARD_CLIENT_ID
+        sync: false
+      - key: BLIZZARD_CLIENT_SECRET
+        sync: false
+      - key: YOUTUBE_VIDEO_ID
+        sync: false
+      - key: TOKEN_FILE
+        sync: false
+      - key: CLIENT_SECRETS_FILE
+        sync: false
+      - key: SPREADSHEET_ID
+        sync: false
+      - key: SHEET_NAME
+        sync: false
+      - key: CREDENTIALS_FILE
+        sync: false

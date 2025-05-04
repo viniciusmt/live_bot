@@ -1,0 +1,162 @@
+import os
+import threading
+import logging
+from flask import Flask, jsonify, request
+from Bot_Twitch import MeuBot
+from youtube_hello import monitorar_chat_youtube
+from dotenv import load_dotenv
+from keep_alive import KeepAliveService
+from utils import setup_logging, check_environment_variables, setup_credentials_files
+
+# Configuração de logging
+setup_logging()
+logger = logging.getLogger(__name__)
+
+# Carregar variáveis de ambiente
+load_dotenv()
+
+# Verificar variáveis de ambiente necessárias
+required_vars = [
+    "GEMINI_API_KEY",
+    "TWITCH_CANAL",
+    "TWITCH_CLIENT_ID",
+    "TWITCH_REFRESH_TOKEN",
+    "YOUTUBE_VIDEO_ID"
+]
+
+missing_vars = check_environment_variables(required_vars)
+if missing_vars:
+    logger.warning(f"⚠️ As seguintes variáveis de ambiente estão ausentes: {', '.join(missing_vars)}")
+
+# Configurar arquivos de credenciais
+setup_credentials_files()
+
+# Inicializar o aplicativo Flask
+app = Flask(__name__)
+
+# Variáveis para armazenar threads
+twitch_thread = None
+youtube_thread = None
+twitch_bot = None
+keep_alive_service = None
+
+# Status para monitoramento
+bot_status = {
+    "twitch": "stopped",
+    "youtube": "stopped",
+    "keep_alive": "stopped"
+}
+
+def iniciar_bot_twitch():
+    """Função para iniciar o bot da Twitch em uma thread separada"""
+    global bot_status, twitch_bot
+    
+    try:
+        logger.info("🎮 Iniciando bot da Twitch...")
+        twitch_bot = MeuBot()
+        bot_status["twitch"] = "running"
+        twitch_bot.run()
+    except Exception as e:
+        logger.error(f"❌ Erro ao iniciar bot da Twitch: {e}")
+        bot_status["twitch"] = f"error: {str(e)}"
+
+def iniciar_bot_youtube():
+    """Função para iniciar o monitoramento do YouTube em uma thread separada"""
+    global bot_status
+    
+    try:
+        logger.info("🎥 Iniciando monitoramento do YouTube...")
+        bot_status["youtube"] = "running"
+        monitorar_chat_youtube()
+    except Exception as e:
+        logger.error(f"❌ Erro ao iniciar monitoramento do YouTube: {e}")
+        bot_status["youtube"] = f"error: {str(e)}"
+
+@app.route('/')
+def home():
+    """Rota principal para verificar se o serviço está funcionando"""
+    return jsonify({
+        "status": "online",
+        "bots": bot_status,
+        "environment": "render" if os.getenv("RENDER_EXTERNAL_HOSTNAME") else "local"
+    })
+
+@app.route('/start')
+def start_bots():
+    """Rota para iniciar os bots"""
+    global twitch_thread, youtube_thread, bot_status, keep_alive_service
+    
+    # Iniciar bot da Twitch se não estiver rodando
+    if bot_status["twitch"] != "running":
+        twitch_thread = threading.Thread(target=iniciar_bot_twitch)
+        twitch_thread.daemon = True
+        twitch_thread.start()
+        bot_status["twitch"] = "starting"
+    
+    # Iniciar bot do YouTube se não estiver rodando
+    if bot_status["youtube"] != "running":
+        youtube_thread = threading.Thread(target=iniciar_bot_youtube)
+        youtube_thread.daemon = True
+        youtube_thread.start()
+        bot_status["youtube"] = "starting"
+    
+    # Iniciar serviço de keep-alive para manter o aplicativo ativo
+    if bot_status["keep_alive"] != "running":
+        keep_alive_service = KeepAliveService(interval_minutes=10)
+        keep_alive_service.start()
+        bot_status["keep_alive"] = "running"
+    
+    return jsonify({
+        "message": "Bots iniciados",
+        "status": bot_status
+    })
+
+@app.route('/stop')
+def stop_bots():
+    """Rota para parar os bots (não implementável diretamente, reinicie o serviço para parar)"""
+    global keep_alive_service, bot_status
+    
+    # Podemos pelo menos parar o serviço de keep-alive
+    if keep_alive_service and bot_status["keep_alive"] == "running":
+        keep_alive_service.stop()
+        bot_status["keep_alive"] = "stopped"
+    
+    return jsonify({
+        "message": "Para parar os bots completamente, reinicie o serviço no Render",
+        "status": bot_status
+    })
+
+@app.route('/status')
+def status():
+    """Rota para verificar o status dos bots"""
+    return jsonify({
+        "bots": bot_status,
+        "uptime": "Disponível no Render Dashboard"
+    })
+
+@app.route('/restart', methods=['POST'])
+def restart_bot():
+    """Rota para reiniciar um bot específico (requer autenticação básica)"""
+    auth_key = request.headers.get('X-API-Key')
+    expected_key = os.getenv('API_KEY')
+    
+    if not auth_key or auth_key != expected_key:
+        return jsonify({"error": "Não autorizado"}), 401
+    
+    bot_name = request.args.get('bot', 'all')
+    
+    # Código para reiniciar bots específicos aqui
+    # (Não implementado completamente - requereria lógica para encerrar threads)
+    
+    return jsonify({
+        "message": f"Solicitação de reinício recebida para: {bot_name}",
+        "status": "pending"
+    })
+
+if __name__ == "__main__":
+    # Iniciar os bots automaticamente ao iniciar o aplicativo
+    start_bots()
+    
+    # Iniciar o servidor Flask
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
