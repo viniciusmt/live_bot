@@ -1,0 +1,24 @@
+# General dependencies
+python-dotenv>=1.0.0
+requests>=2.31.0
+
+# Twitch integration
+twitchio>=2.10.0
+
+# Google services
+google-generativeai>=0.8.5
+google-api-python-client>=2.0.0
+google-auth>=2.0.0
+google-auth-oauthlib>=1.0.0
+
+# Data processing
+pandas>=2.0.0
+
+# Time handling
+pytz>=2023.3
+
+# Logging
+logging>=0.4.9
+
+# Regular expressions
+re>=2.2.1
