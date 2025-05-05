@@ -1,6 +1,7 @@
 import os
 import threading
 import logging
+import re
 from flask import Flask, jsonify, request
 from Bot_Twitch import MeuBot
 from youtube_hello import monitorar_chat_youtube
