@@ -1,8 +1,10 @@
 # General dependencies
 python-dotenv>=1.0.0
 requests>=2.31.0
-gunicorn>=21.0.0  # Adicione esta linha
-unidecode>=1.3.6  # Adicione esta linha
+gunicorn>=21.0.0
+flask>=2.0.0
+unidecode>=1.3.6
+
 # Twitch integration
 twitchio>=2.10.0
 
@@ -11,35 +13,12 @@ google-generativeai>=0.8.5
 google-api-python-client>=2.0.0
 google-auth>=2.0.0
 google-auth-oauthlib>=1.0.0
-gspread>=5.0.0  # Certifique-se de que esta linha está adicionada
+google-auth-httplib2>=0.1.0
+gspread>=5.0.0
+oauth2client>=4.1.3
 
 # Data processing
 pandas>=2.0.0
 
 # Time handling
 pytz>=2023.3
-
-# Logging
-logging>=0.4.9
-
-# Web framework
-flask>=2.0.0  # Adicione também esta linha, pois você está usando Flask
-
-# Threading and async support
-concurrent.futures>=3.0.0
-
-# Re específico para wow_comparative.py
-re>=2.2.1  # (Na verdade, não precisa ser instalado, como discutimos antes)
-
-# Para gerenciamento de tokens
-google-auth-httplib2>=0.1.0
-
-# Para gspread com service_account
-oauth2client>=4.1.3
-
-# Possíveis dependências implícitas
-chardet>=4.0.0
-idna>=2.10
-certifi>=2021.10.8
-urllib3>=1.26.7
-six>=1.16.0
