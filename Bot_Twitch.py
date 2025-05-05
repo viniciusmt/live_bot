@@ -7,17 +7,9 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 import wow_comparative  # Importa o módulo com as funções de comparação
 import pandas as pd  # Importação necessária para manipular DataFrames
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
 
 # ========== CARREGAMENTO DE VARIÁVEIS DE AMBIENTE ==========
 load_dotenv()
-
-# ========== CONFIGURAÇÕES DO YOUTUBE ==========
-YOUTUBE_VIDEO_ID = os.getenv("YOUTUBE_VIDEO_ID")
-TOKEN_FILE = os.getenv("TOKEN_FILE", "token.json")
-CLIENT_SECRETS_FILE = os.getenv("CLIENT_SECRETS_FILE")
-SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
 
 # ========== CONFIGURAÇÃO DO GEMINI ==========
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -45,36 +37,6 @@ REFRESH_API_URL = f"https://twitchtokengenerator.com/api/refresh/{REFRESH_TOKEN}
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "174Hx2g3gZ1IV6OztcmeLUfGi8ahH3sYwG2803kcNVew")
 SHEET_NAME = os.getenv("SHEET_NAME", "Player_status")
 CREDENTIALS_FILE = os.getenv("CREDENTIALS_FILE")
-
-# ========== FUNÇÕES AUXILIARES YOUTUBE ==========
-def get_youtube_service():
-    creds = Credentials.from_authorized_user_file(TOKEN_FILE, scopes=SCOPES)
-    return build("youtube", "v3", credentials=creds)
-
-def get_chat_id_from_video(youtube, video_id):
-    request = youtube.videos().list(part="liveStreamingDetails", id=video_id)
-    response = request.execute()
-    items = response.get("items", [])
-    if items and "liveStreamingDetails" in items[0]:
-        return items[0]["liveStreamingDetails"].get("activeLiveChatId")
-    return None
-
-def enviar_resposta_youtube(texto):
-    youtube = get_youtube_service()
-    chat_id = get_chat_id_from_video(youtube, YOUTUBE_VIDEO_ID)
-    if chat_id:
-        youtube.liveChatMessages().insert(
-            part="snippet",
-            body={
-                "snippet": {
-                    "liveChatId": chat_id,
-                    "type": "textMessageEvent",
-                    "textMessageDetails": {
-                        "messageText": texto
-                    }
-                }
-            }
-        ).execute()
 
 # ========== OBTENDO TOKEN TWITCH ==========
 def obter_token_via_refresh():
@@ -196,24 +158,19 @@ class MeuBot(commands.Bot):
             if not resposta:
                 resposta = "Desculpe, não consegui pensar em nada agora. 😅"
 
-            resposta = "[IA] " + resposta
-            if len(resposta) > 490:
-                resposta = resposta[:490] + "..."
+            resposta_formatada = "[IA] " + resposta
+            if len(resposta_formatada) > 490:
+                resposta_formatada = resposta_formatada[:490] + "..."
 
-            await ctx.send(resposta)
-            enviar_resposta_youtube(f"[Pergunta Twitch] {prompt}\n{resposta}")
+            await ctx.send(resposta_formatada)
             self.cooldown_usuarios[autor] = agora
-
+            
         except Exception as e:
             print(f"❌ Erro ao gerar resposta com Gemini: {e}")
             await ctx.send("⚠️ Ocorreu um erro ao consultar a IA. Tente novamente.")
 
-# ========== INICIALIZAÇÃO ==========
+# Exemplo de uso para testes locais
 if __name__ == "__main__":
-    if not TOKEN:
-        print("🚨 Token não obtido. Não é possível iniciar o bot.")
-        exit(1)
-
     try:
         print("🎬 Iniciando o bot da Twitch...")
         print(f"📡 Canal: {CANAL}")
