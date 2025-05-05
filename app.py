@@ -60,6 +60,9 @@ def iniciar_bot_twitch():
         logger.error(f"❌ Erro ao iniciar bot da Twitch: {e}")
         bot_status["twitch"] = f"error: {str(e)}"
 
+
+
+
 def iniciar_bot_youtube():
     """Função para iniciar o monitoramento do YouTube em uma thread separada"""
     global bot_status
@@ -80,7 +83,54 @@ def home():
         "bots": bot_status,
         "environment": "render" if os.getenv("RENDER_EXTERNAL_HOSTNAME") else "local"
     })
-
+@app.route('/update_youtube', methods=['POST'])
+def update_youtube_id():
+    """Rota para atualizar o ID do vídeo do YouTube e reiniciar o bot do YouTube"""
+    global youtube_thread, bot_status
+    
+    # Verificar autenticação simples com chave de API
+    auth_key = request.headers.get('X-API-Key')
+    expected_key = os.getenv('API_KEY')
+    
+    if not auth_key or auth_key != expected_key:
+        return jsonify({"error": "Não autorizado"}), 401
+    
+    # Obter o novo ID do vídeo do corpo da requisição
+    data = request.json
+    if not data or 'video_id' not in data:
+        return jsonify({"error": "ID do vídeo não fornecido"}), 400
+    
+    new_video_id = data['video_id']
+    
+    # Validar o ID do vídeo (formatação básica)
+    if not re.match(r'^[a-zA-Z0-9_-]{11}$', new_video_id):
+        return jsonify({"error": "Formato de ID de vídeo inválido"}), 400
+    
+    # Atualizar a variável de ambiente
+    os.environ['YOUTUBE_VIDEO_ID'] = new_video_id
+    logger.info(f"🔄 ID do vídeo do YouTube atualizado para: {new_video_id}")
+    
+    # Se o bot do YouTube estiver rodando, vamos tentar reiniciá-lo
+    # (Na prática, isso matará a thread atual e iniciará uma nova)
+    if bot_status["youtube"] == "running" or bot_status["youtube"] == "starting":
+        bot_status["youtube"] = "restarting"
+        
+        # Iniciar uma nova thread para o bot do YouTube
+        youtube_thread = threading.Thread(target=iniciar_bot_youtube)
+        youtube_thread.daemon = True
+        youtube_thread.start()
+        
+        return jsonify({
+            "message": f"ID do vídeo atualizado para {new_video_id} e bot do YouTube está sendo reiniciado",
+            "status": bot_status
+        })
+    else:
+        return jsonify({
+            "message": f"ID do vídeo atualizado para {new_video_id}",
+            "note": "Bot do YouTube não está rodando. Use /start para iniciá-lo.",
+            "status": bot_status
+        })
+    
 @app.route('/start')
 def start_bots():
     """Rota para iniciar os bots"""
