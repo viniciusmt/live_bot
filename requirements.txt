@@ -20,5 +20,3 @@ pytz>=2023.3
 # Logging
 logging>=0.4.9
 
-# Regular expressions
-re>=2.2.1
