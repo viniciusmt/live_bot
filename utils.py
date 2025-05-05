@@ -1,7 +1,7 @@
 import os
 import time
-import requests
 import json
+import requests
 import logging
 from datetime import datetime
 
@@ -41,6 +41,71 @@ def check_environment_variables(required_vars):
     
     return missing_vars
 
+def setup_credentials_files():
+    """
+    Configura os arquivos de credenciais necessários a partir das variáveis de ambiente.
+    """
+    # Configuração do arquivo de credenciais do cliente (client_secret.json)
+    client_secret_content = os.getenv("CLIENT_SECRET_JSON")
+    client_secret_file = os.getenv("CLIENT_SECRETS_FILE", "client_secret.json")
+    
+    if client_secret_content:
+        try:
+            # Validar se é um JSON válido
+            try:
+                json_content = json.loads(client_secret_content)
+                # Se for um JSON válido, salvar no formato correto
+                save_file_to_disk(client_secret_file, json.dumps(json_content, indent=2))
+                logger.info(f"✅ Arquivo de client secret salvo como {client_secret_file}")
+            except json.JSONDecodeError:
+                # Se não for um JSON válido, salvar como está (pode ser um texto escapado)
+                save_file_to_disk(client_secret_file, client_secret_content)
+                logger.warning(f"⚠️ Conteúdo de CLIENT_SECRET_JSON não é um JSON válido, salvando como texto")
+        except Exception as e:
+            logger.error(f"❌ Erro ao salvar arquivo de client secret: {e}")
+    else:
+        logger.warning(f"⚠️ CLIENT_SECRET_JSON não está definido, o arquivo {client_secret_file} não será criado")
+    
+    # Configuração do arquivo de token do YouTube
+    token_content = os.getenv("YOUTUBE_TOKEN_CONTENT")
+    token_file = os.getenv("TOKEN_FILE", "token.json")
+    if token_content:
+        try:
+            # Validar se é um JSON válido
+            try:
+                json_content = json.loads(token_content)
+                # Se for um JSON válido, salvar no formato correto
+                save_file_to_disk(token_file, json.dumps(json_content, indent=2))
+            except json.JSONDecodeError:
+                # Se não for um JSON válido, salvar como está
+                save_file_to_disk(token_file, token_content)
+                logger.warning(f"⚠️ Conteúdo de YOUTUBE_TOKEN_CONTENT não é um JSON válido, salvando como texto")
+            logger.info(f"✅ Arquivo de token do YouTube salvo como {token_file}")
+        except Exception as e:
+            logger.error(f"❌ Erro ao salvar arquivo de token do YouTube: {e}")
+    else:
+        logger.warning(f"⚠️ YOUTUBE_TOKEN_CONTENT não está definido, o arquivo {token_file} não será criado")
+    
+    # Configuração do arquivo de credenciais do Google
+    credentials_content = os.getenv("GOOGLE_CREDENTIALS_CONTENT")
+    credentials_file = os.getenv("CREDENTIALS_FILE", "credentials.json")
+    if credentials_content:
+        try:
+            # Validar se é um JSON válido
+            try:
+                json_content = json.loads(credentials_content)
+                # Se for um JSON válido, salvar no formato correto
+                save_file_to_disk(credentials_file, json.dumps(json_content, indent=2))
+            except json.JSONDecodeError:
+                # Se não for um JSON válido, salvar como está
+                save_file_to_disk(credentials_file, credentials_content)
+                logger.warning(f"⚠️ Conteúdo de GOOGLE_CREDENTIALS_CONTENT não é um JSON válido, salvando como texto")
+            logger.info(f"✅ Arquivo de credenciais do Google salvo como {credentials_file}")
+        except Exception as e:
+            logger.error(f"❌ Erro ao salvar arquivo de credenciais do Google: {e}")
+    else:
+        logger.warning(f"⚠️ GOOGLE_CREDENTIALS_CONTENT não está definido, o arquivo {credentials_file} não será criado")
+
 def keep_alive():
     """
     Função que pode ser usada para manter o serviço ativo no Render.
@@ -61,58 +126,3 @@ def keep_alive():
     except Exception as e:
         logger.error(f"Erro no keep-alive: {e}")
         return False
-
-def obter_token_via_refresh(refresh_api_url):
-    """
-    Obtém um novo token de acesso da Twitch usando o token de atualização.
-    """
-    try:
-        logger.info("🔄 Obtendo novo token via refresh...")
-        response = requests.get(refresh_api_url)
-        data = response.json()
-
-        if response.status_code == 200 and "token" in data and "refresh" in data:
-            logger.info("✅ Novo token obtido com sucesso!")
-            return {
-                "access_token": data["token"],
-                "refresh_token": data["refresh"]
-            }
-        else:
-            logger.error(f"❌ Erro ao obter novo token: {data}")
-            return None
-    except Exception as e:
-        logger.error(f"⚠️ Exceção ao obter token: {e}")
-        return None
-
-def setup_credentials_files():
-    """
-    Verifica e configura os arquivos de credenciais necessários.
-    Esta função pode ser usada para criar arquivos temporários 
-    com conteúdo de variáveis de ambiente no Render.
-    """
-    # YouTube token file
-    token_content = os.getenv("YOUTUBE_TOKEN_CONTENT")
-    token_file = os.getenv("TOKEN_FILE", "token.json")
-    if token_content:
-        try:
-            save_file_to_disk(token_file, token_content)
-        except Exception as e:
-            logger.error(f"Erro ao salvar arquivo de token do YouTube: {e}")
-    
-    # Google Sheets credentials
-    credentials_content = os.getenv("GOOGLE_CREDENTIALS_CONTENT")
-    credentials_file = os.getenv("CREDENTIALS_FILE", "credentials.json")
-    if credentials_content:
-        try:
-            save_file_to_disk(credentials_file, credentials_content)
-        except Exception as e:
-            logger.error(f"Erro ao salvar arquivo de credenciais do Google: {e}")
-    
-    # Client secrets file
-    client_secrets_content = os.getenv("CLIENT_SECRETS_CONTENT")
-    client_secrets_file = os.getenv("CLIENT_SECRETS_FILE", "client_secret.json")
-    if client_secrets_content:
-        try:
-            save_file_to_disk(client_secrets_file, client_secrets_content)
-        except Exception as e:
-            logger.error(f"Erro ao salvar arquivo de secrets do cliente: {e}")
