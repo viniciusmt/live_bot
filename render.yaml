@@ -23,12 +23,20 @@ services:
       - key: YOUTUBE_VIDEO_ID
         sync: false
       - key: TOKEN_FILE
-        sync: false
+        value: token.json
       - key: CLIENT_SECRETS_FILE
-        sync: false
+        value: client_secret.json
       - key: SPREADSHEET_ID
         sync: false
       - key: SHEET_NAME
-        sync: false
+        value: Player_status
       - key: CREDENTIALS_FILE
+        value: credentials.json
+      - key: API_KEY
+        sync: false
+      - key: YOUTUBE_TOKEN_CONTENT
+        sync: false
+      - key: CLIENT_SECRET_JSON
+        sync: false
+      - key: GOOGLE_CREDENTIALS_CONTENT
         sync: false
