@@ -10,6 +10,7 @@ import re
 
 # Configuração de logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Carregamento de variáveis de ambiente
 load_dotenv()
@@ -17,41 +18,55 @@ load_dotenv()
 # Configurações do YouTube
 TOKEN_FILE = os.getenv("TOKEN_FILE", "token.json")
 SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
+YOUTUBE_VIDEO_ID = os.getenv("YOUTUBE_VIDEO_ID")
+
+# Verificar se o ID do vídeo está definido
+if not YOUTUBE_VIDEO_ID:
+    logger.warning("⚠️ ID do vídeo do YouTube não está definido. O bot não funcionará corretamente.")
+else:
+    logger.info(f"ID do vídeo do YouTube configurado: {YOUTUBE_VIDEO_ID}")
 
 # Configuração do Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-generation_config = {
-    "temperature": 0.7,
-    "top_p": 0.95,
-    "top_k": 40,
-    "max_output_tokens": 1024,  # Limitado para respostas mais curtas
-}
-model = genai.GenerativeModel(
-    model_name="gemini-2.0-flash",
-    generation_config=generation_config,
-)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    logger.error("❌ Chave de API do Gemini não está definida. O bot não funcionará.")
+else:
+    genai.configure(api_key=GEMINI_API_KEY)
+    generation_config = {
+        "temperature": 0.7,
+        "top_p": 0.95,
+        "top_k": 40,
+        "max_output_tokens": 1024,  # Limitado para respostas mais curtas
+    }
+    model = genai.GenerativeModel(
+        model_name="gemini-2.0-flash",
+        generation_config=generation_config,
+    )
+    logger.info("✅ Modelo Gemini configurado com sucesso")
 
 def get_youtube_service():
     """Autentica e retorna o serviço do YouTube."""
     try:
         if not os.path.exists(TOKEN_FILE):
-            logging.error(f"Arquivo de token {TOKEN_FILE} não existe")
+            logger.error(f"Arquivo de token {TOKEN_FILE} não existe")
             return None
             
         creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-        return build("youtube", "v3", credentials=creds)
+        service = build("youtube", "v3", credentials=creds)
+        logger.info("✅ Serviço do YouTube inicializado com sucesso")
+        return service
     except Exception as e:
-        logging.error(f"Erro ao obter serviço do YouTube: {e}")
+        logger.error(f"❌ Erro ao obter serviço do YouTube: {e}")
         return None
 
 def get_live_chat_id(youtube, video_id):
     """Obtém o ID do chat da live."""
     try:
         if not video_id:
-            logging.error("ID do vídeo não fornecido para get_live_chat_id")
+            logger.error("ID do vídeo não fornecido para get_live_chat_id")
             return None
             
-        logging.info(f"Buscando chat ID para o vídeo: {video_id}")
+        logger.info(f"Buscando chat ID para o vídeo: {video_id}")
         request = youtube.videos().list(
             part="liveStreamingDetails",
             id=video_id
@@ -60,22 +75,22 @@ def get_live_chat_id(youtube, video_id):
         items = response.get("items", [])
         
         if not items:
-            logging.error(f"Nenhum item encontrado para o vídeo {video_id}")
+            logger.error(f"Nenhum item encontrado para o vídeo {video_id}")
             return None
             
         if "liveStreamingDetails" in items[0]:
             chat_id = items[0]["liveStreamingDetails"].get("activeLiveChatId")
             if chat_id:
-                logging.info(f"Chat ID encontrado: {chat_id}")
+                logger.info(f"Chat ID encontrado: {chat_id}")
                 return chat_id
             else:
-                logging.error("Nenhum activeLiveChatId encontrado nos detalhes da transmissão")
+                logger.error("Nenhum activeLiveChatId encontrado nos detalhes da transmissão")
         else:
-            logging.error("Nenhum liveStreamingDetails encontrado no vídeo. Talvez não seja uma transmissão ao vivo?")
+            logger.error("Nenhum liveStreamingDetails encontrado no vídeo. Talvez não seja uma transmissão ao vivo?")
             
         return None
     except Exception as e:
-        logging.error(f"Erro ao buscar chat ID: {e}")
+        logger.error(f"Erro ao buscar chat ID: {e}")
         return None
 
 def limpar_texto(texto):
@@ -114,10 +129,10 @@ def enviar_resposta_youtube(youtube, chat_id, texto, autor=None):
                 }
             }
         ).execute()
-        logging.info(f"Mensagem enviada: {texto_formatado[:30]}...")
+        logger.info(f"Mensagem enviada: {texto_formatado[:30]}...")
         return True
     except Exception as e:
-        logging.error(f"Erro ao enviar mensagem: {e}")
+        logger.error(f"Erro ao enviar mensagem: {e}")
         return False
 
 def obter_tempo_atual_da_live(youtube, chat_id):
@@ -134,7 +149,7 @@ def obter_tempo_atual_da_live(youtube, chat_id):
             return response.get("nextPageToken")
         return None
     except Exception as e:
-        logging.error(f"Erro ao obter tempo atual da live: {e}")
+        logger.error(f"Erro ao obter tempo atual da live: {e}")
         return None
 
 def monitorar_chat_youtube():
@@ -142,19 +157,19 @@ def monitorar_chat_youtube():
     # Verificar se o ID do vídeo está definido
     video_id = os.getenv("YOUTUBE_VIDEO_ID")
     if not video_id:
-        logging.error("ID do vídeo do YouTube não está definido")
+        logger.error("ID do vídeo do YouTube não está definido")
         return
     
-    logging.info(f"Usando vídeo do YouTube com ID: {video_id}")
+    logger.info(f"Usando vídeo do YouTube com ID: {video_id}")
     
     youtube = get_youtube_service()
     if not youtube:
-        logging.error("Não foi possível autenticar com a API do YouTube")
+        logger.error("Não foi possível autenticar com a API do YouTube")
         return
     
     chat_id = get_live_chat_id(youtube, video_id)
     if not chat_id:
-        logging.error("Não foi possível obter o ID do chat ao vivo")
+        logger.error("Não foi possível obter o ID do chat ao vivo")
         return
     
     # Importante: Obter o token da página atual para começar a partir daqui
@@ -165,8 +180,8 @@ def monitorar_chat_youtube():
     tempo_limite = timedelta(seconds=60)
     mensagem_ids_processadas = set()
 
-    logging.info("🎥 Monitorando o chat da live do YouTube (apenas mensagens novas)...")
-    logging.info(f"Token de início: {next_page_token}")
+    logger.info("🎥 Monitorando o chat da live do YouTube (apenas mensagens novas)...")
+    logger.info(f"Token de início: {next_page_token}")
 
     while True:
         try:
@@ -207,7 +222,7 @@ def monitorar_chat_youtube():
                                 autor)
                             continue
 
-                    logging.info(f"🧠 {autor} perguntou: {prompt}")
+                    logger.info(f"🧠 {autor} perguntou: {prompt}")
                     try:
                         # Enviar prompt curto explícito para o Gemini
                         prompt_modificado = f"Responda de forma muito breve (máximo de 120 caracteres) e simples: {prompt}"
@@ -223,12 +238,12 @@ def monitorar_chat_youtube():
                         
                         if sucesso:
                             cooldown_usuarios[autor] = agora
-                            logging.info(f"Resposta enviada para {autor}")
+                            logger.info(f"Resposta enviada para {autor}")
                         else:
-                            logging.error(f"Falha ao enviar resposta para {autor}")
+                            logger.error(f"Falha ao enviar resposta para {autor}")
                             
                     except Exception as e:
-                        logging.error(f"❌ Erro ao consultar o Gemini: {e}")
+                        logger.error(f"❌ Erro ao consultar o Gemini: {e}")
                         try:
                             enviar_resposta_youtube(youtube, chat_id, 
                                 "Erro ao processar sua pergunta. Tente novamente.", 
@@ -241,9 +256,9 @@ def monitorar_chat_youtube():
             time.sleep(5)  # Aguardar entre as verificações
 
         except Exception as e:
-            logging.error(f"⚠️ Erro ao ler mensagens do chat: {e}")
+            logger.error(f"⚠️ Erro ao ler mensagens do chat: {e}")
             time.sleep(10)
 
 if __name__ == "__main__":
-    logging.info("Iniciando bot de perguntas para YouTube...")
+    logger.info("Iniciando bot de perguntas para YouTube...")
     monitorar_chat_youtube()
