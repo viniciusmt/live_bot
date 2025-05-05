@@ -2,7 +2,7 @@
 python-dotenv>=1.0.0
 requests>=2.31.0
 gunicorn>=21.0.0  # Adicione esta linha
-
+unidecode>=1.3.6  # Adicione esta linha
 # Twitch integration
 twitchio>=2.10.0
 
