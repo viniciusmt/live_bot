@@ -195,10 +195,11 @@ def start_bots():
     # Verificar arquivos de credenciais antes de iniciar
     verificar_arquivos_credenciais()
     
+    service = request.args.get("service", "all")
     start_result = {"message": "Iniciando bots solicitados", "details": {}}
     
     # Iniciar bot da Twitch se não estiver rodando
-    if bot_status["twitch"] != "running" and request.args.get("service", "all") in ["all", "twitch"]:
+    if bot_status["twitch"] != "running" and service in ["all", "twitch"]:
         if missing_vars := check_environment_variables(["GEMINI_API_KEY", "TWITCH_CANAL", "TWITCH_CLIENT_ID", "TWITCH_REFRESH_TOKEN"]):
             start_result["details"]["twitch"] = f"Não iniciado - faltam variáveis: {', '.join(missing_vars)}"
         else:
@@ -211,7 +212,7 @@ def start_bots():
         start_result["details"]["twitch"] = f"Status atual: {bot_status['twitch']}"
     
     # Iniciar bot do YouTube se não estiver rodando e YOUTUBE_VIDEO_ID estiver definido
-    if bot_status["youtube"] != "running" and request.args.get("service", "all") in ["all", "youtube"]:
+    if bot_status["youtube"] != "running" and service in ["all", "youtube"]:
         if not os.getenv("YOUTUBE_VIDEO_ID"):
             start_result["details"]["youtube"] = "Não iniciado - YOUTUBE_VIDEO_ID não definido"
         elif missing_vars := check_environment_variables(["GEMINI_API_KEY"]):
@@ -223,4 +224,148 @@ def start_bots():
             bot_status["youtube"] = "starting"
             start_result["details"]["youtube"] = "Iniciando"
     else:
-        start_result["details"]["youtube
+        start_result["details"]["youtube"] = f"Status atual: {bot_status['youtube']}"
+    
+    # Iniciar serviço de keep-alive para manter o aplicativo ativo
+    if bot_status["keep_alive"] != "running":
+        keep_alive_service = KeepAliveService(interval_minutes=10)
+        keep_alive_service.start()
+        bot_status["keep_alive"] = "running"
+        start_result["details"]["keep_alive"] = "Iniciado"
+    else:
+        start_result["details"]["keep_alive"] = f"Status atual: {bot_status['keep_alive']}"
+    
+    return jsonify(start_result)
+
+@app.route('/start_twitch')
+def start_twitch_only():
+    """Rota para iniciar apenas o bot da Twitch"""
+    request.args = {"service": "twitch"}
+    return start_bots()
+
+@app.route('/start_youtube')
+def start_youtube_only():
+    """Rota para iniciar apenas o bot do YouTube"""
+    request.args = {"service": "youtube"}
+    return start_bots()
+
+@app.route('/stop')
+def stop_bots():
+    """Rota para parar os bots (não implementável diretamente, reinicie o serviço para parar)"""
+    global keep_alive_service, bot_status
+    
+    # Podemos pelo menos parar o serviço de keep-alive
+    if keep_alive_service and bot_status["keep_alive"] == "running":
+        keep_alive_service.stop()
+        bot_status["keep_alive"] = "stopped"
+    
+    return jsonify({
+        "message": "Para parar os bots completamente, reinicie o serviço no Render",
+        "status": bot_status
+    })
+
+@app.route('/status')
+def status():
+    """Rota para verificar o status dos bots"""
+    return jsonify({
+        "bots": bot_status,
+        "uptime": "Disponível no Render Dashboard"
+    })
+
+@app.route('/debug')
+def debug_info():
+    """Rota para obter informações de debug do sistema"""
+    env_info = {}
+    
+    # Coletar informações de ambiente (ocultando valores sensíveis)
+    for key, value in os.environ.items():
+        if key in ["GEMINI_API_KEY", "TWITCH_CLIENT_ID", "TWITCH_REFRESH_TOKEN", 
+                  "BLIZZARD_CLIENT_SECRET", "API_KEY"]:
+            env_info[key] = f"{value[:5]}..." if value else "[não definido]"
+        else:
+            env_info[key] = value
+    
+    # Verificar arquivos existentes no diretório
+    try:
+        files = os.listdir(".")
+    except:
+        files = ["Erro ao listar arquivos"]
+    
+    return jsonify({
+        "status": bot_status,
+        "environment": env_info,
+        "files": files
+    })
+
+@app.route('/restart', methods=['POST'])
+def restart_bot():
+    """Rota para reiniciar um bot específico (requer autenticação básica)"""
+    auth_key = request.headers.get('X-API-Key')
+    expected_key = os.getenv('API_KEY')
+    
+    if not auth_key or auth_key != expected_key:
+        return jsonify({"error": "Não autorizado"}), 401
+    
+    # Obter o nome do bot a ser reiniciado (all, twitch, youtube)
+    bot_name = request.args.get('bot', 'all')
+    
+    # Reset dos status
+    if bot_name == 'all' or bot_name == 'twitch':
+        bot_status["twitch"] = "restarting"
+    
+    if bot_name == 'all' or bot_name == 'youtube':
+        bot_status["youtube"] = "restarting"
+    
+    # Iniciar novas threads para os bots solicitados
+    result = {"message": f"Solicitação de reinício recebida para: {bot_name}", "status": {}}
+    
+    if bot_name == 'all' or bot_name == 'twitch':
+        twitch_thread = threading.Thread(target=iniciar_bot_twitch)
+        twitch_thread.daemon = True
+        twitch_thread.start()
+        result["status"]["twitch"] = "reiniciando"
+    
+    if bot_name == 'all' or bot_name == 'youtube':
+        if os.getenv("YOUTUBE_VIDEO_ID"):
+            youtube_thread = threading.Thread(target=iniciar_bot_youtube)
+            youtube_thread.daemon = True
+            youtube_thread.start()
+            result["status"]["youtube"] = "reiniciando"
+        else:
+            result["status"]["youtube"] = "desativado (YOUTUBE_VIDEO_ID não definido)"
+    
+    return jsonify(result)
+
+if __name__ == "__main__":
+    # Iniciar os bots automaticamente ao iniciar o aplicativo
+    # Podemos iniciar os bots de forma independente
+    
+    # Iniciar Twitch Bot (se todas as variáveis necessárias estiverem definidas)
+    if not check_environment_variables(["GEMINI_API_KEY", "TWITCH_CANAL", "TWITCH_CLIENT_ID", "TWITCH_REFRESH_TOKEN"]):
+        logger.info("Iniciando Bot da Twitch automaticamente...")
+        twitch_thread = threading.Thread(target=iniciar_bot_twitch)
+        twitch_thread.daemon = True
+        twitch_thread.start()
+        bot_status["twitch"] = "starting"
+    else:
+        logger.warning("⚠️ Bot da Twitch não iniciado automaticamente - variáveis de ambiente ausentes")
+    
+    # Iniciar YouTube Bot (se o YOUTUBE_VIDEO_ID estiver definido)
+    if os.getenv("YOUTUBE_VIDEO_ID") and not check_environment_variables(["GEMINI_API_KEY"]):
+        logger.info("Iniciando Bot do YouTube automaticamente...")
+        youtube_thread = threading.Thread(target=iniciar_bot_youtube)
+        youtube_thread.daemon = True
+        youtube_thread.start()
+        bot_status["youtube"] = "starting"
+    else:
+        logger.warning("⚠️ Bot do YouTube não iniciado automaticamente - YOUTUBE_VIDEO_ID ou GEMINI_API_KEY ausente")
+    
+    # Iniciar serviço de keep-alive
+    logger.info("Iniciando serviço keep-alive...")
+    keep_alive_service = KeepAliveService(interval_minutes=10)
+    keep_alive_service.start()
+    bot_status["keep_alive"] = "running"
+    
+    # Iniciar o servidor Flask
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
