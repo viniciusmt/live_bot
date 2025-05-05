@@ -15,7 +15,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 load_dotenv()
 
 # Configurações do YouTube
-YOUTUBE_VIDEO_ID = os.getenv("YOUTUBE_VIDEO_ID")
 TOKEN_FILE = os.getenv("TOKEN_FILE", "token.json")
 SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
 
@@ -35,6 +34,10 @@ model = genai.GenerativeModel(
 def get_youtube_service():
     """Autentica e retorna o serviço do YouTube."""
     try:
+        if not os.path.exists(TOKEN_FILE):
+            logging.error(f"Arquivo de token {TOKEN_FILE} não existe")
+            return None
+            
         creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
         return build("youtube", "v3", credentials=creds)
     except Exception as e:
@@ -44,16 +47,32 @@ def get_youtube_service():
 def get_live_chat_id(youtube, video_id):
     """Obtém o ID do chat da live."""
     try:
+        if not video_id:
+            logging.error("ID do vídeo não fornecido para get_live_chat_id")
+            return None
+            
+        logging.info(f"Buscando chat ID para o vídeo: {video_id}")
         request = youtube.videos().list(
             part="liveStreamingDetails",
             id=video_id
         )
         response = request.execute()
         items = response.get("items", [])
-        if items and "liveStreamingDetails" in items[0]:
+        
+        if not items:
+            logging.error(f"Nenhum item encontrado para o vídeo {video_id}")
+            return None
+            
+        if "liveStreamingDetails" in items[0]:
             chat_id = items[0]["liveStreamingDetails"].get("activeLiveChatId")
             if chat_id:
+                logging.info(f"Chat ID encontrado: {chat_id}")
                 return chat_id
+            else:
+                logging.error("Nenhum activeLiveChatId encontrado nos detalhes da transmissão")
+        else:
+            logging.error("Nenhum liveStreamingDetails encontrado no vídeo. Talvez não seja uma transmissão ao vivo?")
+            
         return None
     except Exception as e:
         logging.error(f"Erro ao buscar chat ID: {e}")
@@ -120,12 +139,20 @@ def obter_tempo_atual_da_live(youtube, chat_id):
 
 def monitorar_chat_youtube():
     """Monitora o chat do YouTube e responde a comandos, ignorando mensagens antigas."""
+    # Verificar se o ID do vídeo está definido
+    video_id = os.getenv("YOUTUBE_VIDEO_ID")
+    if not video_id:
+        logging.error("ID do vídeo do YouTube não está definido")
+        return
+    
+    logging.info(f"Usando vídeo do YouTube com ID: {video_id}")
+    
     youtube = get_youtube_service()
     if not youtube:
         logging.error("Não foi possível autenticar com a API do YouTube")
         return
     
-    chat_id = get_live_chat_id(youtube, YOUTUBE_VIDEO_ID)
+    chat_id = get_live_chat_id(youtube, video_id)
     if not chat_id:
         logging.error("Não foi possível obter o ID do chat ao vivo")
         return
