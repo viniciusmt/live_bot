@@ -2,6 +2,8 @@ import os
 import threading
 import logging
 import re
+import json
+import asyncio
 from flask import Flask, jsonify, request
 from Bot_Twitch import MeuBot
 from youtube_hello import monitorar_chat_youtube
@@ -48,21 +50,58 @@ bot_status = {
     "keep_alive": "stopped"
 }
 
+def verificar_arquivos_credenciais():
+    """Verifica se os arquivos de credenciais necessários existem e são válidos."""
+    files_to_check = {
+        "TOKEN_FILE": os.getenv("TOKEN_FILE", "token.json"),
+        "CLIENT_SECRETS_FILE": os.getenv("CLIENT_SECRETS_FILE", "client_secret.json"),
+        "CREDENTIALS_FILE": os.getenv("CREDENTIALS_FILE", "credentials.json")
+    }
+    
+    for name, path in files_to_check.items():
+        if os.path.exists(path):
+            file_size = os.path.getsize(path)
+            logger.info(f"✅ Arquivo {name} ({path}) existe com tamanho {file_size} bytes")
+            
+            # Verificar se é um JSON válido
+            try:
+                with open(path, 'r') as f:
+                    json.loads(f.read())
+                logger.info(f"✅ Arquivo {name} contém JSON válido")
+            except Exception as e:
+                logger.error(f"❌ Arquivo {name} não contém JSON válido: {e}")
+        else:
+            logger.error(f"❌ Arquivo {name} ({path}) não existe")
+    
+    # Verificar variáveis de ambiente críticas
+    env_vars = ["GEMINI_API_KEY", "TWITCH_CANAL", "TWITCH_CLIENT_ID", 
+                "TWITCH_REFRESH_TOKEN", "YOUTUBE_VIDEO_ID"]
+    
+    for var in env_vars:
+        value = os.getenv(var)
+        if value:
+            # Mostrar apenas os primeiros caracteres para segurança
+            display_value = value[:5] + "..." if len(value) > 5 else "[vazio]"
+            logger.info(f"✅ Variável {var} definida como {display_value}")
+        else:
+            logger.error(f"❌ Variável {var} não definida")
+
 def iniciar_bot_twitch():
     """Função para iniciar o bot da Twitch em uma thread separada"""
     global bot_status, twitch_bot
     
     try:
         logger.info("🎮 Iniciando bot da Twitch...")
+        # Criar um novo event loop para esta thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
         twitch_bot = MeuBot()
         bot_status["twitch"] = "running"
         twitch_bot.run()
     except Exception as e:
         logger.error(f"❌ Erro ao iniciar bot da Twitch: {e}")
         bot_status["twitch"] = f"error: {str(e)}"
-
-
-
 
 def iniciar_bot_youtube():
     """Função para iniciar o monitoramento do YouTube em uma thread separada"""
@@ -84,6 +123,7 @@ def home():
         "bots": bot_status,
         "environment": "render" if os.getenv("RENDER_EXTERNAL_HOSTNAME") else "local"
     })
+
 @app.route('/update_youtube', methods=['POST'])
 def update_youtube_id():
     """Rota para atualizar o ID do vídeo do YouTube e reiniciar o bot do YouTube"""
@@ -137,6 +177,9 @@ def start_bots():
     """Rota para iniciar os bots"""
     global twitch_thread, youtube_thread, bot_status, keep_alive_service
     
+    # Verificar arquivos de credenciais antes de iniciar
+    verificar_arquivos_credenciais()
+    
     # Iniciar bot da Twitch se não estiver rodando
     if bot_status["twitch"] != "running":
         twitch_thread = threading.Thread(target=iniciar_bot_twitch)
@@ -183,6 +226,31 @@ def status():
     return jsonify({
         "bots": bot_status,
         "uptime": "Disponível no Render Dashboard"
+    })
+
+@app.route('/debug')
+def debug_info():
+    """Rota para obter informações de debug do sistema"""
+    env_info = {}
+    
+    # Coletar informações de ambiente (ocultando valores sensíveis)
+    for key, value in os.environ.items():
+        if key in ["GEMINI_API_KEY", "TWITCH_CLIENT_ID", "TWITCH_REFRESH_TOKEN", 
+                  "BLIZZARD_CLIENT_SECRET", "API_KEY"]:
+            env_info[key] = f"{value[:5]}..." if value else "[não definido]"
+        else:
+            env_info[key] = value
+    
+    # Verificar arquivos existentes no diretório
+    try:
+        files = os.listdir(".")
+    except:
+        files = ["Erro ao listar arquivos"]
+    
+    return jsonify({
+        "status": bot_status,
+        "environment": env_info,
+        "files": files
     })
 
 @app.route('/restart', methods=['POST'])
