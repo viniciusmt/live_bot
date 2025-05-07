@@ -40,3 +40,5 @@ services:
         sync: false
       - key: GOOGLE_CREDENTIALS_CONTENT
         sync: false
+      - key: TWITCH_TOKEN_SCOPES
+        value: "channel:read:polls channel:manage:polls chat:read chat:edit"
