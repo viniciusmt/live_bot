@@ -92,6 +92,63 @@ class MeuBot(commands.Bot):
         print(f"💬 Mensagem recebida de {message.author.name}: {message.content}")
         await self.handle_commands(message)
 
+    def obter_broadcaster_id(self):
+        """Obtém o ID do streamer (broadcaster) para uso na API da Twitch."""
+        url = "https://api.twitch.tv/helix/users"
+        headers = {
+            "Client-ID": CLIENT_ID,
+            "Authorization": f"Bearer {TOKEN}"
+        }
+        try:
+            response = requests.get(url, headers=headers)
+            data = response.json()
+            return data["data"][0]["id"] if "data" in data and data["data"] else None
+        except Exception as e:
+            print(f"❌ Erro ao obter broadcaster_id: {e}")
+            return None
+
+    def enviar_enquete(self, titulo, opcoes):
+        """
+        Cria uma enquete na Twitch via API.
+        
+        Args:
+            titulo: Título da enquete
+            opcoes: Lista de opções para a enquete
+        
+        Returns:
+            bool: True se a enquete foi criada com sucesso
+        """
+        broadcaster_id = self.obter_broadcaster_id()
+        if not broadcaster_id:
+            print("❌ Não foi possível obter o broadcaster_id")
+            return False
+            
+        try:
+            url = "https://api.twitch.tv/helix/polls"
+            headers = {
+                "Client-ID": CLIENT_ID,
+                "Authorization": f"Bearer {TOKEN}",
+                "Content-Type": "application/json"
+            }
+            
+            # Garantir que o título e opções estejam dentro dos limites da Twitch
+            titulo = titulo[:60]  # Máximo de 60 caracteres
+            opcoes_formatadas = [{"title": op[:25]} for op in opcoes[:5]]  # Máx 5 opções de 25 caracteres
+            
+            body = {
+                "broadcaster_id": broadcaster_id,
+                "title": titulo,
+                "choices": opcoes_formatadas,
+                "duration": 180  # Duração de 3 minutos (180 segundos)
+            }
+
+            response = requests.post(url, headers=headers, json=body)
+            print(f"🔁 Resposta API Twitch: {response.status_code}")
+            return response.status_code == 200
+        except Exception as e:
+            print(f"❌ Erro ao criar enquete: {e}")
+            return False
+
     @commands.command(name="compare")
     async def compare_character(self, ctx):
         parts = ctx.message.content.split()
@@ -131,6 +188,71 @@ class MeuBot(commands.Bot):
         except Exception as e:
             print(f"❌ Erro ao processar a comparação: {e}")
             await ctx.send(f"Erro ao processar a comparação: {e}")
+
+    @commands.command(name="enquete")
+    async def cmd_enquete(self, ctx):
+        """
+        Comando que permite ao dono do canal criar uma enquete gerada por IA.
+        Uso: !enquete tema da enquete
+        """
+        autor = ctx.author.name.lower()
+        canal = CANAL.lower()
+        
+        # Verificar se quem enviou o comando é o dono do canal
+        if autor != canal:
+            await ctx.send(f"⛔ Apenas o dono do canal pode criar enquetes!")
+            return
+        
+        # Extrair o tema da enquete do comando
+        prompt_usuario = ctx.message.content.replace("!enquete", "").strip()
+        
+        # Se não houver tema, usar um prompt genérico
+        if not prompt_usuario:
+            prompt = "Crie uma enquete criativa e divertida com 3 opções para uma live de games."
+        else:
+            prompt = f"Crie uma enquete divertida com 3 opções sobre: {prompt_usuario}"
+        
+        try:
+            await ctx.send("🧠 Gerando enquete, aguarde...")
+            
+            # Consultar a IA para criar uma enquete
+            response = model.generate_content(prompt)
+            resposta = response.text.strip()
+            
+            # Processar a resposta para extrair título e opções
+            linhas = resposta.splitlines()
+            titulo = linhas[0].strip()
+            
+            # Extrair opções (linhas que começam com traço, asterisco ou número)
+            opcoes = []
+            for linha in linhas[1:]:
+                linha_limpa = linha.strip()
+                if linha_limpa and (linha_limpa.startswith('-') or 
+                                   linha_limpa.startswith('*') or 
+                                   linha_limpa.startswith('•') or
+                                   (linha_limpa[0].isdigit() and linha_limpa[1:2] in [')', '.', ':'])):
+                    opcao = linha_limpa.lstrip('-*•0123456789). :').strip()
+                    opcoes.append(opcao)
+            
+            # Se não conseguimos extrair pelo menos 2 opções, não podemos criar a enquete
+            if len(opcoes) < 2:
+                await ctx.send("❌ Não consegui gerar opções suficientes para a enquete.")
+                return
+            
+            # Limitar a 5 opções (máximo permitido pela Twitch)
+            opcoes = opcoes[:5]
+            
+            # Criar a enquete
+            sucesso = self.enviar_enquete(titulo, opcoes)
+            
+            if sucesso:
+                await ctx.send(f"📊 Enquete criada: {titulo}")
+            else:
+                await ctx.send("❌ Falha ao criar a enquete. Verifique se o token tem permissão para gerenciar enquetes (channel:manage:polls).")
+        
+        except Exception as e:
+            print(f"❌ Erro ao processar comando enquete: {e}")
+            await ctx.send("⚠️ Ocorreu um erro ao gerar ou enviar a enquete.")
 
     @commands.command(name="pergunta")
     async def pergunta_gemini(self, ctx):
